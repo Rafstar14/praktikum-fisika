@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulasi Rangkaian & Aliran Listrik Dinamis Rumah 2.200 VA</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .mono {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        /* Animasi aliran elektron / arus bolak-balik */
+        @keyframes flowAnimation {
+            from {
+                stroke-dashoffset: 24;
+            }
+            to {
+                stroke-dashoffset: 0;
+            }
+        }
+        .current-flow-active {
+            stroke-dasharray: 6 6;
+            animation: flowAnimation 0.6s linear infinite;
+        }
+        .current-flow-fast {
+            stroke-dasharray: 6 6;
+            animation: flowAnimation 0.3s linear infinite;
+        }
+        .wire-off {
+            stroke: #334155;
+            stroke-dasharray: none;
+        }
+        .pulse-trip {
+            animation: pulseRed 1s infinite;
+        }
+        @keyframes pulseRed {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+        }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-6 lg:p-8">
+
+    <!-- Header Utama -->
+    <div class="max-w-7xl mx-auto space-y-6">
+        <header class="bg-slate-800/90 border border-slate-700 rounded-2xl p-5 md:p-6 shadow-xl flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+            <div>
+                <div class="flex items-center gap-2 text-amber-400 text-xs font-semibold uppercase tracking-wider mb-1">
+                    <span class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-ping"></span>
+                    Laboratorium Virtual Listrik Dinamis (AC 1 Fasa - 220V / 50Hz)
+                </div>
+                <h1 class="text-xl md:text-2xl font-bold text-white">Skema Rangkaian Paralel & Aliran Arus Dinamis Rumah (2.200 VA)</h1>
+                <p class="text-slate-400 text-sm mt-1">Analisis Hukum Ohm (<span class="mono text-amber-300">V = I × Z</span>), Hukum I Kirchhoff (<span class="mono text-sky-300">∑I_masuk = ∑I_keluar</span>), & Hambatan Pengganti Paralel</p>
+            </div>
+
+            <!-- Preset Jam Operasional & Reset -->
+            <div class="flex flex-wrap items-center gap-2">
+                <button onclick="setScenario('siang')" class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-xs font-semibold transition shadow">
+                    ☀️ Mode Siang (08:00 - 16:00)
+                </button>
+                <button onclick="setScenario('malam')" class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-xs font-semibold transition shadow">
+                    🌙 Mode Malam Normal (19:00)
+                </button>
+                <button onclick="setScenario('puncak')" class="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-500 text-xs font-semibold transition shadow">
+                    ⚡ Semua Alat Nyala (Beban Puncak)
+                </button>
+                <button onclick="resetMCB()" id="btnResetMCB" class="hidden px-4 py-2 rounded-xl bg-red-600 hover:bg-red-500 text-xs font-bold text-white pulse-trip transition">
+                    ⚠️ MCB JEGLEK! Klik Nyalakan Kembali
+                </button>
+            </div>
+        </header>
+
+        <!-- Banner Peringatan MCB Trip -->
+        <div id="tripAlertBox" class="hidden bg-red-950/90 border-2 border-red-500 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-red-600 flex items-center justify-center text-xl shrink-0">⚡</div>
+                <div>
+                    <h3 class="font-bold text-red-200 text-base">OVERLOAD! MCB Utama 10 Ampere Turun (Trip / Jeglek)</h3>
+                    <p class="text-red-300 text-xs mt-0.5" id="tripReasonText">Total arus melebihi kapasitas maksimal 10,00 A (2.200 VA). Matikan sebagian beban lalu tekan tombol Reset MCB.</p>
+                </div>
+            </div>
+            <button onclick="resetMCB()" class="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-bold shrink-0">
+                Naikkan Tuas MCB
+            </button>
+        </div>
+
+        <!-- Baris Indikator Parameter Utama Listrik Dinamis -->
+        <section class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 md:gap-4">
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Tegangan Sumber (V)</div>
+                <div class="text-xl md:text-2xl font-bold mono text-emerald-400 mt-1" id="valVoltage">220.0 V</div>
+                <div class="text-[11px] text-slate-500 mt-1">Konstan di tiap cabang paralel</div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Arus Total (<span class="mono">I_total</span>)</div>
+                <div class="text-xl md:text-2xl font-bold mono text-amber-400 mt-1" id="valCurrentAC">9.81 A</div>
+                <div class="text-[11px] text-slate-400 mt-1">Batas MCB: <span class="mono font-semibold text-white">10.00 A</span></div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Arus Resistif (<span class="mono">I = P/V</span>)</div>
+                <div class="text-xl md:text-2xl font-bold mono text-sky-400 mt-1" id="valCurrentRes">8.34 A</div>
+                <div class="text-[11px] text-slate-500 mt-1">Tanpa beban reaktif (PF=1)</div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Daya Aktif & Semu</div>
+                <div class="text-lg md:text-xl font-bold mono text-white mt-1"><span id="valPowerW">1835</span> W</div>
+                <div class="text-[11px] text-amber-300 mono mt-1"><span id="valPowerVA">2158.8</span> / 2200 VA</div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Hambatan Paralel (<span class="mono">R_tot</span>)</div>
+                <div class="text-xl md:text-2xl font-bold mono text-purple-400 mt-1" id="valRTotal">26.38 Ω</div>
+                <div class="text-[11px] text-slate-500 mt-1">Impedansi Z: <span class="mono text-purple-300" id="valZTotal">22.42 Ω</span></div>
+            </div>
+
+            <div class="bg-slate-800/80 border border-slate-700 rounded-2xl p-4">
+                <div class="text-xs text-slate-400">Sisa Cadangan Arus</div>
+                <div class="text-xl md:text-2xl font-bold mono text-rose-400 mt-1" id="valMarginI">0.19 A</div>
+                <div class="text-[11px] text-slate-400 mt-1" id="valStatusText">Sangat Kritis (98.1%)</div>
+            </div>
+        </section>
+
+        <!-- GAMBAR SKEMA RANGKAIAN INTERAKTIF (SVG) -->
+        <section class="bg-slate-900 border border-slate-700 rounded-2xl p-4 md:p-6 shadow-2xl">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4 pb-3 border-b border-slate-800">
+                <div>
+                    <h2 class="text-base md:text-lg font-bold text-white flex items-center gap-2">
+                        <span>📐</span> Gambar Skema Rangkaian Instalasi Paralel Rumah (Single-Line & Multi-Branch Diagram)
+                    </h2>
+                    <p class="text-xs text-slate-400">Klik langsung pada kotak komponen di bawah atau gunakan sakelar di panel kontrol untuk memutus/menyambung arus cabang.</p>
+                </div>
+                <div class="flex items-center gap-4 text-xs">
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-1 bg-amber-400 inline-block rounded"></span> Kawat Fasa (L - 220V)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-1 bg-sky-400 inline-block rounded"></span> Kawat Netral (N - 0V)</span>
+                    <span class="flex items-center gap-1.5"><span class="w-3 h-1 bg-slate-600 inline-block rounded"></span> Jalur Putus (OFF)</span>
+                </div>
+            </div>
+
+            <!-- Kontainer SVG Responsif -->
+            <div class="w-full overflow-x-auto">
+                <svg id="circuitSvg" viewBox="0 0 1150 560" class="w-full min-w-[900px] h-auto bg-slate-950 rounded-xl border border-slate-800 p-2">
+                    <defs>
+                        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                            <feGaussianBlur stdDeviation="2.5" result="blur" />
+                            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                        </filter>
+                    </defs>
+
+                    <!-- Grid Latar Halus -->
+                    <pattern id="smallGrid" width="25" height="25" patternUnits="userSpaceOnUse">
+                        <path d="M 25 0 L 0 0 0 25" fill="none" stroke="#1e293b" stroke-width="0.6"/>
+                    </pattern>
+                    <rect width="1150" height="560" fill="url(#smallGrid)" />
+
+                    <!-- 1. SUMBER PLN & KWH METER (KIRI ATAS) -->
+                    <g transform="translate(20, 30)">
+                        <rect x="0" y="0" width="135" height="95" rx="10" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+                        <text x="67" y="22" text-anchor="middle" fill="#94a3b8" font-size="10" font-weight="bold">SUMBER PLN 1 FASA</text>
+                        <text x="67" y="42" text-anchor="middle" fill="#34d399" font-size="15" font-weight="bold" font-family="monospace">220V / 50Hz</text>
+                        <text x="67" y="62" text-anchor="middle" fill="#fbbf24" font-size="11" font-family="monospace">KWh Meter 2.200VA</text>
+                        <text x="67" y="80" text-anchor="middle" fill="#cbd5e1" font-size="10">PF (cos φ) = 0,85</text>
+                    </g>
+
+                    <!-- 2. MCB UTAMA 10 AMPERE -->
+                    <g transform="translate(190, 35)" onclick="resetMCB()" class="cursor-pointer">
+                        <rect id="svgMcbBox" x="0" y="0" width="120" height="85" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+                        <text x="60" y="20" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="bold">MCB UTAMA PLN</text>
+                        <text id="svgMcbStatus" x="60" y="42" text-anchor="middle" fill="#4ade80" font-size="14" font-weight="bold" font-family="monospace">ON (10 A)</text>
+                        <text id="svgMcbCurrent" x="60" y="62" text-anchor="middle" fill="#f8fafc" font-size="11" font-family="monospace">I_tot = 9.81 A</text>
+                        <text x="60" y="77" text-anchor="middle" fill="#94a3b8" font-size="9">Batas: 1.870 W</text>
+                    </g>
+
+                    <!-- Kawat Penghubung PLN ke MCB -->
+                    <line x1="155" y1="65" x2="190" y2="65" stroke="#fbbf24" stroke-width="4" class="current-flow-active"/>
+                    <line x1="155" y1="95" x2="190" y2="95" stroke="#38bdf8" stroke-width="4"/>
+
+                    <!-- TITIK SIMPUL UTAMA (NODE A - HUKUM I KIRCHHOFF) -->
+                    <circle cx="345" cy="65" r="6" fill="#fbbf24" filter="url(#glow)"/>
+                    <text x="345" y="48" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="bold">Simpul KCL Utama</text>
+
+                    <!-- BUSBAR FASA (GARIS HORIZONTAL ATAS - MERAH/KUNING) -->
+                    <line id="mainPhaseBus" x1="310" y1="65" x2="1080" y2="65" stroke="#334155" stroke-width="4"/>
+                    <line id="mainPhaseFlow" x1="310" y1="65" x2="1080" y2="65" stroke="#fbbf24" stroke-width="4" class="current-flow-active"/>
+                    <text x="1090" y="69" fill="#fbbf24" font-size="11" font-weight="bold" font-family="monospace">FASA (L)</text>
+
+                    <!-- BUSBAR NETRAL (GARIS HORIZONTAL BAWAH - BIRU) -->
+                    <line x1="155" y1="490" x2="1080" y2="490" stroke="#0284c7" stroke-width="4"/>
+                    <line x1="155" y1="95" x2="155" y2="490" stroke="#0284c7" stroke-width="4"/>
+                    <text x="1090" y="494" fill="#38bdf8" font-size="11" font-weight="bold" font-family="monospace">NETRAL (N)</text>
+
+                    <!-- KOTAK PEMBAGI 3 GRUP MCB DALAM RUMAH (BOX SEKRING) -->
+                    <!-- Grup 1: Jalur AC (Cabang 1 & 2) -->
+                    <rect x="365" y="88" width="205" height="32" rx="6" fill="#0f172a" stroke="#475569" stroke-dasharray="4 2"/>
+                    <text x="467" y="108" text-anchor="middle" fill="#cbd5e1" font-size="10" font-family="monospace" id="svgGroup1Text">Grup 1 (AC): I_G1 = 5.99 A</text>
+
+                    <!-- Grup 2: Jalur Motor & Pemanas (Cabang 3, 6, 7, 8) -->
+                    <rect x="590" y="88" width="340" height="32" rx="6" fill="#0f172a" stroke="#475569" stroke-dasharray="4 2"/>
+                    <text x="760" y="108" text-anchor="middle" fill="#cbd5e1" font-size="10" font-family="monospace" id="svgGroup2Text">Grup 2 (Stopkontak): I_G2 = 2.27 A</text>
+
+                    <!-- Grup 3: Jalur Penerangan & Wi-Fi (Cabang 4 & 5) -->
+                    <rect x="945" y="88" width="175" height="32" rx="6" fill="#0f172a" stroke="#475569" stroke-dasharray="4 2"/>
+                    <text x="1032" y="108" text-anchor="middle" fill="#cbd5e1" font-size="10" font-family="monospace" id="svgGroup3Text">Grup 3 (Lampu/WiFi): 1.55 A</text>
+
+                    <!-- CONTAINER 8 CABANG PARALEL (DI-RENDER DINAMIS OLEH JS) -->
+                    <g id="branchesContainer"></g>
+                </svg>
+            </div>
+        </section>
+
+        <!-- PANEL KONTROL SAKELAR PERANGKAT & TABEL HUKUM OHM / KIRCHHOFF -->
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+            
+            <!-- Kolom Kiri (5 Kolom): Sakelar Interaktif & Simulasi Beban Tambahan -->
+            <div class="lg:col-span-5 bg-slate-800/90 border border-slate-700 rounded-2xl p-5 flex flex-col justify-between">
+                <div>
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-base font-bold text-white">🎛️ Sakelar Cabang Paralel (Klik ON/OFF)</h3>
+                        <div class="flex items-center gap-2 text-xs">
+                            <label class="text-slate-400">Mode Hitung:</label>
+                            <select id="calcModeSelect" onchange="updateCircuit()" class="bg-slate-900 border border-slate-600 rounded-lg px-2 py-1 text-xs text-amber-300 font-semibold">
+                                <option value="puncak">Arus Puncak Serentak (100%)</option>
+                                <option value="realistis">Arus Rata-rata (Duty Cycle)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Daftar Sakelar 8 Alat Utama + 1 Alat Uji (Setrika) -->
+                    <div id="switchesList" class="space-y-2.5"></div>
+                </div>
+
+                <!-- Kotak Rumus Cepat Hukum I Kirchhoff -->
+                <div class="mt-5 bg-slate-900/90 border border-slate-700 rounded-xl p-3.5 text-xs space-y-1.5">
+                    <div class="font-semibold text-sky-400">📌 Pembuktian Hukum I Kirchhoff (KCL) Saat Ini:</div>
+                    <div class="mono text-slate-300 break-all" id="kclEquationText">
+                        I_total = I1 + I2 + I3 + I4 + I5 + I6 + I7 + I8
+                    </div>
+                    <div class="text-slate-400 text-[11px]">
+                        Karena seluruh alat terhubung <strong>Paralel</strong>, tegangan pada setiap alat sama (<span class="mono text-emerald-400">V₁ = V₂ = ... = V₈ = 220 V</span>), sedangkan arus total adalah penjumlahan arus seluruh cabang yang aktif.
+                    </div>
+                </div>
+            </div>
+
+            <!-- Kolom Kanan (7 Kolom): Tabel Parameter Listrik Dinamis per Cabang -->
+            <div class="lg:col-span-7 bg-slate-800/90 border border-slate-700 rounded-2xl p-5 overflow-hidden flex flex-col justify-between">
+                <div>
+                    <h3 class="text-base font-bold text-white mb-1">📊 Tabel Analisis Listrik Dinamis per Cabang Paralel</h3>
+                    <p class="text-xs text-slate-400 mb-4">Menampilkan perbandingan Arus Resistif (<span class="mono">I = P/V</span>), Arus Efektif AC (<span class="mono">I_AC = P/(V·cos φ)</span>), Hambatan (<span class="mono">R = V²/P</span>), dan Impedansi (<span class="mono">Z = V/I_AC</span>).</p>
+
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-slate-700 text-slate-400 bg-slate-900/60">
+                                    <th class="py-2.5 px-2">Cabang Alat</th>
+                                    <th class="py-2.5 px-2 text-right">Daya (P)</th>
+                                    <th class="py-2.5 px-2 text-right">Arus I (PF=1)</th>
+                                    <th class="py-2.5 px-2 text-right text-amber-300">Arus AC (PF=0.85)</th>
+                                    <th class="py-2.5 px-2 text-right">Hambatan (R)</th>
+                                    <th class="py-2.5 px-2 text-right">Impedansi (Z)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="dynamicTableBody" class="divide-y divide-slate-700/60 mono"></tbody>
+                            <tfoot id="dynamicTableFoot" class="border-t-2 border-slate-600 bg-slate-900/90 font-bold mono text-xs"></tfoot>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Grafik Profil Aliran Arus Dinamis 24 Jam -->
+                <div class="mt-6 pt-4 border-t border-slate-700">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="text-xs font-bold text-slate-200 uppercase tracking-wider">⏱️ Kurva Dinamika Arus Terhadap Waktu I(t) Selama 24 Jam</h4>
+                        <span class="text-[11px] text-rose-400 mono font-semibold">Garis Merah = Batas MCB 10,00 A</span>
+                    </div>
+                    <div class="grid grid-cols-4 gap-2 text-center text-xs mt-3">
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-700">
+                            <div class="text-[11px] text-slate-400">00:00 - 05:00 (Tidur)</div>
+                            <div class="text-sm font-bold mono text-sky-400 mt-0.5">7.11 A</div>
+                            <div class="text-[10px] text-slate-500">AC×2 + Kulkas + WiFi</div>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-700">
+                            <div class="text-[11px] text-slate-400">05:00 - 08:00 (Pagi)</div>
+                            <div class="text-sm font-bold mono text-emerald-400 mt-0.5">2.06 A</div>
+                            <div class="text-[10px] text-slate-500">Nanak Nasi + Pompa + Kulkas</div>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-slate-700">
+                            <div class="text-[11px] text-slate-400">08:00 - 18:00 (Siang)</div>
+                            <div class="text-sm font-bold mono text-emerald-400 mt-0.5">2.59 A</div>
+                            <div class="text-[10px] text-slate-500">Mesin Cuci + Kulkas + WiFi</div>
+                        </div>
+                        <div class="bg-slate-900 p-2.5 rounded-xl border border-amber-500/60">
+                            <div class="text-[11px] text-amber-300 font-semibold">18:00 - 22:00 (Malam)</div>
+                            <div class="text-sm font-bold mono text-amber-400 mt-0.5">8.74 A - 9.81 A</div>
+                            <div class="text-[10px] text-slate-400">AC×2 + 23 Lampu + Semua</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        const VOLTAGE = 220.0;
+        const PF_DEFAULT = 0.85;
+        const MCB_LIMIT_AMP = 10.0;
+
+        // Data 8 cabang peralatan rumah pengguna + 1 cabang simulasi tambahan (Setrika) untuk uji Trip MCB
+        const appliances = [
+            { id: 1, code: 'R1', name: 'AC 1 PK', group: 1, watt: 770, duty: 0.70, hours: 8, active: true, x: 415 },
+            { id: 2, code: 'R2', name: 'AC 0,5 PK', group: 1, watt: 350, duty: 0.70, hours: 8, active: true, x: 515 },
+            { id: 3, code: 'R3', name: 'Kulkas 1 Pintu/2 Pintu', group: 2, watt: 150, duty: 0.40, hours: 24, active: true, x: 625 },
+            { id: 6, code: 'R6', name: 'Rice Cooker', group: 2, watt: 100, duty: 1.00, hours: 5, active: true, x: 715 },
+            { id: 7, code: 'R7', name: 'Pompa Air', group: 2, watt: 75,  duty: 0.15, hours: 20, active: true, x: 805 },
+            { id: 8, code: 'R8', name: 'Mesin Cuci', group: 2, watt: 100, duty: 0.70, hours: 2, active: true, x: 895 },
+            { id: 4, code: 'R4', name: '23 Lampu (10W)', group: 3, watt: 230, duty: 1.00, hours: 8, active: true, x: 990 },
+            { id: 5, code: 'R5', name: 'Router Wi-Fi', group: 3, watt: 60,  duty: 1.00, hours: 24, active: true, x: 1080 },
+            { id: 9, code: 'R_Uji', name: '[Uji] Setrika Listrik', group: 2, watt: 350, duty: 1.00, hours: 1, active: false, isExtra: true, x: -1 }
+        ];
+
+        let mcbTripped = false;
+
+        function toggleAppliance(id) {
+            const item = appliances.find(a => a.id === id);
+            if (!item) return;
+            item.active = !item.active;
+            updateCircuit();
+        }
+
+        function resetMCB() {
+            // Jika masih kelebihan beban, matikan beban uji Setrika atau Mesin Cuci otomatis agar bisa reset
+            const totalWatt = getActiveWatt();
+            const totalCurrentAC = totalWatt / (VOLTAGE * PF_DEFAULT);
+            if (totalCurrentAC > MCB_LIMIT_AMP) {
+                const extra = appliances.find(a => a.id === 9);
+                if (extra && extra.active) extra.active = false;
+                const washer = appliances.find(a => a.id === 8);
+                if (washer && washer.active && (getActiveWatt() / (VOLTAGE * PF_DEFAULT) > MCB_LIMIT_AMP)) {
+                    washer.active = false;
+                }
+            }
+            mcbTripped = false;
+            updateCircuit();
+        }
+
+        function setScenario(mode) {
+            mcbTripped = false;
+            if (mode === 'siang') {
+                // Siang: Kulkas, WiFi, Rice Cooker, Pompa, Mesin Cuci ON; AC & Lampu OFF
+                appliances.forEach(a => {
+                    if ([3, 5, 6, 7, 8].includes(a.id)) a.active = true;
+                    else a.active = false;
+                });
+            } else if (mode === 'malam') {
+                // Malam Normal: AC 1PK, AC 0.5PK, Kulkas, 23 Lampu, WiFi ON; Mesin Cuci & Rice Cooker OFF
+                appliances.forEach(a => {
+                    if ([1, 2, 3, 4, 5].includes(a.id)) a.active = true;
+                    else a.active = false;
+                });
+            } else if (mode === 'puncak') {
+                // Semua 8 alat utama rumah ON
+                appliances.forEach(a => {
+                    a.active = !a.isExtra;
+                });
+            }
+            updateCircuit();
+        }
+
+        function getActiveWatt() {
+            const mode = document.getElementById('calcModeSelect').value;
+            return appliances.reduce((sum, a) => {
+                if (!a.active) return sum;
+                const factor = (mode === 'realistis') ? a.duty : 1.0;
+                return sum + (a.watt * factor);
+            }, 0);
+        }
+
+        function updateCircuit() {
+            const mode = document.getElementById('calcModeSelect').value;
+            let totalWatt = 0;
+            let totalI_Res = 0;
+            let totalI_AC = 0;
+            let sumInvR = 0;
+            let sumInvZ = 0;
+
+            let groupCurrents = { 1: 0, 2: 0, 3: 0 };
+
+            appliances.forEach(a => {
+                const factor = (mode === 'realistis') ? a.duty : 1.0;
+                const effWatt = a.watt * factor;
+                const iRes = effWatt / VOLTAGE;
+                const iAC = effWatt / (VOLTAGE * PF_DEFAULT);
+                const rVal = (VOLTAGE * VOLTAGE) / effWatt;
+                const zVal = VOLTAGE / iAC;
+
+                a.currentWatt = effWatt;
+                a.iRes = iRes;
+                a.iAC = iAC;
+                a.rVal = rVal;
+                a.zVal = zVal;
+
+                if (a.active) {
+                    totalWatt += effWatt;
+                    totalI_Res += iRes;
+                    totalI_AC += iAC;
+                    sumInvR += (1.0 / rVal);
+                    sumInvZ += (1.0 / zVal);
+                    groupCurrents[a.group] += iAC;
+                }
+            });
+
+            // Cek apakah arus total melebihi kapasitas MCB 10 Ampere
+            if (totalI_AC > MCB_LIMIT_AMP) {
+                mcbTripped = true;
+            }
+
+            const displayV = mcbTripped ? 0.0 : VOLTAGE;
+            const displayI_AC = mcbTripped ? 0.0 : totalI_AC;
+            const displayI_Res = mcbTripped ? 0.0 : totalI_Res;
+            const displayWatt = mcbTripped ? 0 : totalWatt;
+            const displayVA = displayWatt / PF_DEFAULT;
+            const rTotal = sumInvR > 0 ? (1.0 / sumInvR) : 0;
+            const zTotal = sumInvZ > 0 ? (1.0 / sumInvZ) : 0;
+            const marginAmp = Math.max(0, MCB_LIMIT_AMP - totalI_AC);
+
+            // Update Kartu Indikator Atas
+            document.getElementById('valVoltage').textContent = `${displayV.toFixed(1)} V`;
+            document.getElementById('valCurrentAC').textContent = `${displayI_AC.toFixed(2)} A`;
+            document.getElementById('valCurrentRes').textContent = `${displayI_Res.toFixed(2)} A`;
+            document.getElementById('valPowerW').textContent = `${Math.round(displayWatt)}`;
+            document.getElementById('valPowerVA').textContent = `${displayVA.toFixed(1)}`;
+            document.getElementById('valRTotal').textContent = rTotal > 0 ? `${rTotal.toFixed(2)} Ω` : '∞ Ω';
+            document.getElementById('valZTotal').textContent = zTotal > 0 ? `${zTotal.toFixed(2)} Ω` : '∞ Ω';
+            document.getElementById('valMarginI').textContent = mcbTripped ? `OVERLOAD!` : `${marginAmp.toFixed(2)} A`;
+
+            const statusEl = document.getElementById('valStatusText');
+            if (mcbTripped) {
+                statusEl.textContent = `Arus Tembus ${totalI_AC.toFixed(2)} A (>10A)`;
+                statusEl.className = 'text-[11px] text-red-400 font-bold mt-1';
+            } else if (totalI_AC >= 9.0) {
+                statusEl.textContent = `Batas Kritis (${((totalI_AC / MCB_LIMIT_AMP) * 100).toFixed(1)}%)`;
+                statusEl.className = 'text-[11px] text-amber-400 font-semibold mt-1';
+            } else {
+                statusEl.textContent = `Aman (${((totalI_AC / MCB_LIMIT_AMP) * 100).toFixed(1)}% dari 10A)`;
+                statusEl.className = 'text-[11px] text-emerald-400 font-semibold mt-1';
+            }
+
+            // Tampilkan / Sembunyikan Peringatan MCB Trip
+            const tripAlert = document.getElementById('tripAlertBox');
+            const btnReset = document.getElementById('btnResetMCB');
+            if (mcbTripped) {
+                tripAlert.classList.remove('hidden');
+                btnReset.classList.remove('hidden');
+                document.getElementById('tripReasonText').textContent =
+                    `Total beban mencapai ${Math.round(totalWatt)} W (${(totalWatt / PF_DEFAULT).toFixed(0)} VA), menarik arus ${totalI_AC.toFixed(2)} A yang melampaui batas MCB 10,00 A!`;
+            } else {
+                tripAlert.classList.add('hidden');
+                btnReset.classList.add('hidden');
+            }
+
+            // Update Elemen SVG Utama
+            const svgMcbStatus = document.getElementById('svgMcbStatus');
+            const svgMcbCurrent = document.getElementById('svgMcbCurrent');
+            const svgMcbBox = document.getElementById('svgMcbBox');
+            const mainPhaseFlow = document.getElementById('mainPhaseFlow');
+
+            if (mcbTripped) {
+                svgMcbStatus.textContent = 'TRIP / OFF!';
+                svgMcbStatus.setAttribute('fill', '#ef4444');
+                svgMcbBox.setAttribute('stroke', '#ef4444');
+                svgMcbCurrent.textContent = `I = 0.00 A (Putus)`;
+                mainPhaseFlow.setAttribute('class', 'wire-off');
+            } else {
+                svgMcbStatus.textContent = 'ON (10 A)';
+                svgMcbStatus.setAttribute('fill', '#4ade80');
+                svgMcbBox.setAttribute('stroke', '#fbbf24');
+                svgMcbCurrent.textContent = `I_tot = ${displayI_AC.toFixed(2)} A`;
+                mainPhaseFlow.setAttribute('class', displayI_AC > 0 ? 'current-flow-active' : 'wire-off');
+            }
+
+            document.getElementById('svgGroup1Text').textContent =
+                `Grup 1 (AC): I_G1 = ${(mcbTripped ? 0 : groupCurrents[1]).toFixed(2)} A`;
+            document.getElementById('svgGroup2Text').textContent =
+                `Grup 2 (Stopkontak): I_G2 = ${(mcbTripped ? 0 : groupCurrents[2]).toFixed(2)} A`;
+            document.getElementById('svgGroup3Text').textContent =
+                `Grup 3 (Lampu/WiFi): ${(mcbTripped ? 0 : groupCurrents[3]).toFixed(2)} A`;
+
+            renderSvgBranches();
+            renderSwitchesAndTable(displayI_Res, displayI_AC, displayWatt, rTotal, zTotal);
+        }
+
+        function renderSvgBranches() {
+            const container = document.getElementById('branchesContainer');
+            let html = '';
+
+            // Render 8 cabang utama di dalam diagram SVG
+            appliances.filter(a => !a.isExtra).forEach((a) => {
+                const isFlowing = a.active && !mcbTripped;
+                const wireColorPhase = isFlowing ? '#fbbf24' : '#334155';
+                const wireColorNeutral = isFlowing ? '#38bdf8' : '#334155';
+                const flowClass = isFlowing ? (a.iAC >= 1.5 ? 'current-flow-fast' : 'current-flow-active') : '';
+                const boxStroke = isFlowing ? '#38bdf8' : '#475569';
+                const boxFill = isFlowing ? '#0f172a' : '#1e293b';
+                const badgeColor = isFlowing ? '#4ade80' : '#64748b';
+
+                html += `
+                <g class="cursor-pointer" onclick="toggleAppliance(${a.id})">
+                    <!-- Titik Percabangan Atas (Node Fasa) -->
+                    <circle cx="${a.x}" cy="65" r="4.5" fill="${wireColorPhase}" />
+                    
+                    <!-- Kawat Vertikal Atas (Fasa ke Beban) -->
+                    <line x1="${a.x}" y1="65" x2="${a.x}" y2="145" stroke="#334155" stroke-width="3"/>
+                    <line x1="${a.x}" y1="65" x2="${a.x}" y2="145" stroke="${wireColorPhase}" stroke-width="3" class="${flowClass}"/>
+
+                    <!-- Simbol Sakelar Cabang -->
+                    <circle cx="${a.x}" cy="150" r="4" fill="${wireColorPhase}"/>
+                    <line x1="${a.x}" y1="150" x2="${isFlowing ? a.x : a.x + 12}" y2="175" stroke="${wireColorPhase}" stroke-width="3"/>
+                    <circle cx="${a.x}" cy="178" r="4" fill="${wireColorPhase}"/>
+
+                    <!-- Kawat Lanjutan ke Kotak Beban Resistor/Impedansi -->
+                    <line x1="${a.x}" y1="178" x2="${a.x}" y2="215" stroke="${wireColorPhase}" stroke-width="3" class="${flowClass}"/>
+
+                    <!-- Kotak Komponen Beban Rumah -->
+                    <rect x="${a.x - 42}" y="215" width="84" height="165" rx="8" fill="${boxFill}" stroke="${boxStroke}" stroke-width="2"/>
+                    
+                    <!-- Label Kode & Nama Alat -->
+                    <text x="${a.x}" y="233" text-anchor="middle" fill="#94a3b8" font-size="9" font-weight="bold" font-family="monospace">${a.code} (${a.active ? 'ON' : 'OFF'})</text>
+                    <text x="${a.x}" y="249" text-anchor="middle" fill="#ffffff" font-size="10" font-weight="bold">${a.name.substring(0, 12)}</text>
+
+                    <!-- Simbol Zigzag Resistor / Impedansi di dalam Kotak -->
+                    <path d="M ${a.x} 260 L ${a.x - 8} 266 L ${a.x + 8} 274 L ${a.x - 8} 282 L ${a.x + 8} 290 L ${a.x} 296" fill="none" stroke="${isFlowing ? '#fbbf24' : '#475569'}" stroke-width="2"/>
+
+                    <!-- Informasi Daya, Arus Cabang, & Hambatan -->
+                    <text x="${a.x}" y="315" text-anchor="middle" fill="#fbbf24" font-size="10" font-weight="bold" font-family="monospace">${Math.round(a.currentWatt)} W</text>
+                    <text x="${a.x}" y="332" text-anchor="middle" fill="${badgeColor}" font-size="10" font-weight="bold" font-family="monospace">I = ${isFlowing ? a.iAC.toFixed(2) : '0.00'} A</text>
+                    <text x="${a.x}" y="348" text-anchor="middle" fill="#c084fc" font-size="9" font-family="monospace">R = ${a.rVal.toFixed(0)} Ω</text>
+                    <text x="${a.x}" y="363" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="monospace">Z = ${a.zVal.toFixed(0)} Ω</text>
+
+                    <!-- Kawat Vertikal Bawah (Beban ke Busbar Netral) -->
+                    <line x1="${a.x}" y1="380" x2="${a.x}" y2="490" stroke="#334155" stroke-width="3"/>
+                    <line x1="${a.x}" y1="380" x2="${a.x}" y2="490" stroke="${wireColorNeutral}" stroke-width="3" class="${flowClass}"/>
+
+                    <!-- Titik Simpul Bawah (Node Netral) -->
+                    <circle cx="${a.x}" cy="490" r="4.5" fill="${wireColorNeutral}" />
+                </g>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function renderSwitchesAndTable(displayI_Res, displayI_AC, displayWatt, rTotal, zTotal) {
+            const switchesEl = document.getElementById('switchesList');
+            const tbodyEl = document.getElementById('dynamicTableBody');
+            const tfootEl = document.getElementById('dynamicTableFoot');
+
+            let switchesHtml = '';
+            let tableHtml = '';
+            let activeCurrentParts = [];
+
+            appliances.forEach(a => {
+                const isFlowing = a.active && !mcbTripped;
+                if (isFlowing) {
+                    activeCurrentParts.push(`${a.iAC.toFixed(2)}A`);
+                }
+
+                // Item Sakelar
+                switchesHtml += `
+                <div onclick="toggleAppliance(${a.id})" class="flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition ${
+                    a.active
+                        ? (a.isExtra ? 'bg-rose-950/60 border-rose-500' : 'bg-slate-900 border-sky-500/60')
+                        : 'bg-slate-900/40 border-slate-800 opacity-60'
+                }">
+                    <div class="flex items-center gap-2.5">
+                        <span class="w-2.5 h-2.5 rounded-full ${isFlowing ? 'bg-emerald-400' : 'bg-slate-600'}"></span>
+                        <div>
+                            <div class="text-xs font-semibold text-white">${a.code} — ${a.name}</div>
+                            <div class="text-[11px] text-slate-400 mono">${Math.round(a.currentWatt)} W | R = ${a.rVal.toFixed(1)} Ω</div>
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <span class="mono text-xs font-bold ${isFlowing ? 'text-amber-300' : 'text-slate-500'}">
+                            ${isFlowing ? a.iAC.toFixed(2) : '0.00'} A
+                        </span>
+                        <span class="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase ${
+                            a.active ? 'bg-emerald-600 text-white' : 'bg-slate-700 text-slate-300'
+                        }">
+                            ${a.active ? 'ON' : 'OFF'}
+                        </span>
+                    </div>
+                </div>`;
+
+                // Baris Tabel
+                tableHtml += `
+                <tr class="${isFlowing ? 'text-slate-200' : 'text-slate-500 line-through'}">
+                    <td class="py-2 px-2 font-sans font-medium">${a.code}: ${a.name}</td>
+                    <td class="py-2 px-2 text-right">${isFlowing ? Math.round(a.currentWatt) : 0} W</td>
+                    <td class="py-2 px-2 text-right text-sky-300">${isFlowing ? a.iRes.toFixed(3) : '0.000'} A</td>
+                    <td class="py-2 px-2 text-right font-semibold text-amber-300">${isFlowing ? a.iAC.toFixed(3) : '0.000'} A</td>
+                    <td class="py-2 px-2 text-right text-purple-300">${a.rVal.toFixed(2)} Ω</td>
+                    <td class="py-2 px-2 text-right text-indigo-300">${a.zVal.toFixed(2)} Ω</td>
+                </tr>`;
+            });
+
+            switchesEl.innerHTML = switchesHtml;
+            tbodyEl.innerHTML = tableHtml;
+
+            tfootEl.innerHTML = `
+                <tr>
+                    <td class="py-3 px-2 font-sans text-white">TOTAL PARALEL (V = 220V)</td>
+                    <td class="py-3 px-2 text-right text-white">${Math.round(displayWatt)} W</td>
+                    <td class="py-3 px-2 text-right text-sky-400">${displayI_Res.toFixed(3)} A</td>
+                    <td class="py-3 px-2 text-right text-amber-400">${displayI_AC.toFixed(3)} A</td>
+                    <td class="py-3 px-2 text-right text-purple-400">${rTotal > 0 ? rTotal.toFixed(2) + ' Ω' : '∞'}</td>
+                    <td class="py-3 px-2 text-right text-indigo-400">${zTotal > 0 ? zTotal.toFixed(2) + ' Ω' : '∞'}</td>
+                </tr>
+            `;
+
+            const kclEl = document.getElementById('kclEquationText');
+            if (mcbTripped) {
+                kclEl.textContent = 'MCB TRIP (Arus Terputus): I_total = 0.00 A';
+            } else if (activeCurrentParts.length > 0) {
+                kclEl.textContent = `I_total = ${activeCurrentParts.join(' + ')} = ${displayI_AC.toFixed(2)} A`;
+            } else {
+                kclEl.textContent = 'Semua sakelar OFF: I_total = 0.00 A';
+            }
+        }
+
+        window.onload = function() {
+            updateCircuit();
+        };
+    </script>
+</body>
+</html>
